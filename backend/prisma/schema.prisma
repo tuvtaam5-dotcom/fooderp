@@ -1,0 +1,98 @@
+// Prisma schema — Sprint 25 scope only: Users, Roles, Departments, and their
+// many-to-many join tables. Matches ERD/Data Dictionary (חלק א׳, סעיף 2.1)
+// exactly. Site is modeled minimally here (referenced by users.site_id) since
+// the full Sites/Multi-Site module is out of scope for this sprint.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Minimal stub — full Sites module (Architecture §9 Multi-Site Readiness)
+// is out of scope for Sprint 25. Only what users.site_id needs to compile
+// and be queryable is defined here.
+model Site {
+  id     Int    @id @default(autoincrement())
+  name   String
+  status SiteStatus @default(active)
+  users  User[]
+
+  @@map("sites")
+}
+
+enum SiteStatus {
+  active
+  inactive
+}
+
+model User {
+  id           Int      @id @default(autoincrement())
+  username     String   @unique
+  passwordHash String   @map("password_hash")
+  fullName     String   @map("full_name")
+  status       UserStatus @default(active)
+  siteId       Int?     @map("site_id")
+  site         Site?    @relation(fields: [siteId], references: [id])
+
+  roles        UserRole[]
+  departments  UserDepartment[]
+
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@map("users")
+}
+
+enum UserStatus {
+  active
+  inactive
+}
+
+// 12 fixed roles (Business Spec ch25.1) — reference data, no CUD via API.
+model Role {
+  id    Int    @id @default(autoincrement())
+  name  String @unique @map("role_name")
+  users UserRole[]
+
+  @@map("roles")
+}
+
+// 11 fixed departments (Business Spec ch25.1) — reference data, no CUD via API.
+model Department {
+  id    Int    @id @default(autoincrement())
+  name  String @unique @map("department_name")
+  users UserDepartment[]
+
+  @@map("departments")
+}
+
+// Many-to-many: user <-> role. Independent of UserDepartment (ERD §2.1 —
+// "שיוך רבים-לרבים, עצמאי לחלוטין").
+model UserRole {
+  userId Int  @map("user_id")
+  roleId Int  @map("role_id")
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role   Role @relation(fields: [roleId], references: [id], onDelete: Restrict)
+
+  @@id([userId, roleId])
+  @@map("user_roles")
+}
+
+// Many-to-many: user <-> department. No minimum count enforced at the DB
+// level (business rule: department assignment is optional, ch25.1) —
+// enforced at the application layer instead (role_ids minimum IS enforced
+// at the service layer since Prisma doesn't support "at least 1 related
+// row" as a schema-level constraint).
+model UserDepartment {
+  userId       Int        @map("user_id")
+  departmentId Int        @map("department_id")
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  department   Department @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+
+  @@id([userId, departmentId])
+  @@map("user_departments")
+}

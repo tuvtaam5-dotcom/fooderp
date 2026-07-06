@@ -2,6 +2,8 @@ import { Request, Response, NextFunction } from "express";
 
 export interface ApiError extends Error {
   statusCode?: number;
+  errorCode?: string;
+  fieldErrors?: Array<{ field: string; issue: string }>;
 }
 
 export function errorHandler(
@@ -11,10 +13,13 @@ export function errorHandler(
   _next: NextFunction
 ): void {
   const statusCode = err.statusCode ?? 500;
+  const errorCode =
+    err.errorCode ?? (statusCode === 500 ? "INTERNAL_SERVER_ERROR" : "REQUEST_ERROR");
 
   res.status(statusCode).json({
-    error_code: statusCode === 500 ? "INTERNAL_SERVER_ERROR" : "REQUEST_ERROR",
+    error_code: errorCode,
     message: err.message || "אירעה שגיאה בלתי צפויה",
+    ...(err.fieldErrors ? { field_errors: err.fieldErrors } : {}),
   });
 }
 
