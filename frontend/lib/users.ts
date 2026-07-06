@@ -1,77 +1,66 @@
-import { API_BASE_URL } from "./api";
+import { authFetchJson } from "./api";
 
 export interface Role {
-  id: number;
-  name: string;
+  role_id: number;
+  role_name: string;
 }
 
 export type UserStatus = "active" | "inactive";
 
 export interface AppUser {
-  id: number;
+  user_id: number;
   username: string;
-  fullName: string;
+  full_name: string;
   status: UserStatus;
-  roleIds: number[];
-  siteId: number;
-  // TODO (Locations module): responsibleLocationIds: number[] יתווסף כאן
-  // ובמסך /users, כשדה בחירה ממודול Locations (לא כטקסט חופשי).
+  site_id: number | null;
+  role_ids: number[];
+  department_ids: number[];
+  // TODO (Locations module): department_ids already covers the "מחסנים"
+  // department; a separate responsible_location_ids will be added here
+  // and in the /users screen once the Locations module exists (per ch25
+  // TODO already documented in the ERD/Data Dictionary).
 }
 
-export interface UserFormInput {
+export interface CreateUserInput {
   username: string;
-  fullName: string;
-  roleIds: number[];
-  siteId: number;
+  password: string;
+  full_name: string;
+  site_id: number;
+  role_ids: number[];
+  department_ids: number[];
 }
 
-async function handle<T>(response: Response): Promise<T> {
-  if (!response.ok) {
-    const body = await response.json().catch(() => ({}));
-    throw new Error(body.message ?? "שגיאה בתקשורת עם השרת");
-  }
-  const body = await response.json();
-  return body.data as T;
+export interface UpdateUserInput {
+  username?: string;
+  full_name?: string;
+  site_id?: number;
+  role_ids?: number[];
+  department_ids?: number[];
 }
 
-export async function fetchUsers(): Promise<AppUser[]> {
-  const res = await fetch(`${API_BASE_URL}/v1/users`);
-  return handle<AppUser[]>(res);
+export function fetchUsers(): Promise<AppUser[]> {
+  return authFetchJson<AppUser[]>("/v1/users");
 }
 
-export async function fetchRoles(): Promise<Role[]> {
-  const res = await fetch(`${API_BASE_URL}/v1/roles`);
-  return handle<Role[]>(res);
+export function fetchRoles(): Promise<Role[]> {
+  return authFetchJson<Role[]>("/v1/roles");
 }
 
-export async function createUser(input: UserFormInput): Promise<AppUser> {
-  const res = await fetch(`${API_BASE_URL}/v1/users`, {
+export function createUser(input: CreateUserInput): Promise<AppUser> {
+  return authFetchJson<AppUser>("/v1/users", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
   });
-  return handle<AppUser>(res);
 }
 
-export async function updateUser(
-  id: number,
-  input: UserFormInput
-): Promise<AppUser> {
-  const res = await fetch(`${API_BASE_URL}/v1/users/${id}`, {
+export function updateUser(id: number, input: UpdateUserInput): Promise<AppUser> {
+  return authFetchJson<AppUser>(`/v1/users/${id}`, {
     method: "PUT",
-    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
   });
-  return handle<AppUser>(res);
 }
 
-export async function setUserStatus(
-  id: number,
-  status: UserStatus
-): Promise<AppUser> {
+export function setUserStatus(id: number, status: UserStatus): Promise<AppUser> {
   const action = status === "active" ? "activate" : "deactivate";
-  const res = await fetch(`${API_BASE_URL}/v1/users/${id}/${action}`, {
-    method: "PATCH",
-  });
-  return handle<AppUser>(res);
+  return authFetchJson<AppUser>(`/v1/users/${id}/${action}`, { method: "PATCH" });
 }

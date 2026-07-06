@@ -42,7 +42,7 @@ export default function DashboardPage() {
             href="/users"
             className="rounded-lg px-4 py-2 text-slate-300 hover:bg-slate-800"
           >
-            משתמשים
+           משתמשים
           </Link>
           <span className="rounded-lg px-4 py-2 text-slate-400">
             מלאי (בקרוב)
