@@ -3,9 +3,14 @@ export interface UserResponse {
   username: string;
   full_name: string;
   status: "active" | "inactive";
+  status_change_reason: string | null;
   site_id: number | null;
   role_ids: number[];
   department_ids: number[];
+}
+
+export interface StatusChangeInput {
+  reason: string;
 }
 
 export interface CreateUserInput {
@@ -14,7 +19,7 @@ export interface CreateUserInput {
   full_name: string;
   site_id: number;
   role_ids: number[];
-  department_ids?: number[];
+  department_ids: number[];
 }
 
 export interface UpdateUserInput {

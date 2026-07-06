@@ -12,6 +12,7 @@ export interface AppUser {
   username: string;
   full_name: string;
   status: UserStatus;
+  status_change_reason: string | null;
   site_id: number | null;
   role_ids: number[];
   department_ids: number[];
@@ -60,7 +61,10 @@ export function updateUser(id: number, input: UpdateUserInput): Promise<AppUser>
   });
 }
 
-export function setUserStatus(id: number, status: UserStatus): Promise<AppUser> {
+export function setUserStatus(id: number, status: UserStatus, reason: string): Promise<AppUser> {
   const action = status === "active" ? "activate" : "deactivate";
-  return authFetchJson<AppUser>(`/v1/users/${id}/${action}`, { method: "PATCH" });
+  return authFetchJson<AppUser>(`/v1/users/${id}/${action}`, {
+    method: "PATCH",
+    body: JSON.stringify({ reason }),
+  });
 }

@@ -18,6 +18,7 @@ import {
 } from "@/lib/users";
 import { Department, fetchDepartments } from "@/lib/departments";
 
+
 export default function UsersPage() {
   const router = useRouter();
 
@@ -29,6 +30,7 @@ export default function UsersPage() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [accessDenied, setAccessDenied] = useState(false);
 
+  // Create/Edit form (same form, reused — editingUserId === null means Create)
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingUserId, setEditingUserId] = useState<number | null>(null);
   const [formUsername, setFormUsername] = useState("");
@@ -39,14 +41,15 @@ export default function UsersPage() {
   const [formSiteId, setFormSiteId] = useState<number>(1);
   const [isSaving, setIsSaving] = useState(false);
 
+  // Activate/Deactivate confirmation
+  const [statusChangeUser, setStatusChangeUser] = useState<AppUser | null>(null);
+  const [statusChangeReason, setStatusChangeReason] = useState("");
+  const [isChangingStatus, setIsChangingStatus] = useState(false);
+  const [statusChangeError, setStatusChangeError] = useState<string | null>(null);
+
   // Layer 1 of RBAC enforcement (UI): redirect if there is no session at all.
-  // Layer 2 (the real enforcement) happens below when the API calls
-  // themselves return 403 — see loadData(). This screen does not attempt to
-  // decode "am I מנהל מערכת" from role_ids client-side, because resolving a
-  // role_id to a role_name requires GET /v1/roles, which is ITSELF
-  // restricted to מנהל מערכת (RBAC Matrix §2.15). Pre-emptively hiding the
-  // nav link based on a guessed role_id would mean hardcoding an assumption
-  // about seed order — the backend's 403 is the real source of truth here.
+  // Layer 2 (the real enforcement) happens in loadData() below — see comment
+  // there for why this screen cannot pre-emptively hide its own nav link.
   useEffect(() => {
     const session = getAuthSession();
     if (!session) {
@@ -103,17 +106,19 @@ export default function UsersPage() {
     setFormRoleIds([]);
     setFormDepartmentIds([]);
     setFormSiteId(1);
+    setErrorMessage(null);
     setIsFormOpen(true);
   }
 
   function openEditForm(user: AppUser) {
     setEditingUserId(user.user_id);
     setFormUsername(user.username);
-    setFormPassword(""); // never pre-filled, never sent unless changed (not implemented this sprint — edit does not change password)
+    setFormPassword(""); // never pre-filled; empty + optional on edit (not sent, not changeable this sprint)
     setFormFullName(user.full_name);
     setFormRoleIds(user.role_ids);
     setFormDepartmentIds(user.department_ids);
     setFormSiteId(user.site_id ?? 1);
+    setErrorMessage(null);
     setIsFormOpen(true);
   }
 
@@ -132,6 +137,18 @@ export default function UsersPage() {
     setIsSaving(true);
     setErrorMessage(null);
 
+    if (formRoleIds.length === 0) {
+      setErrorMessage("יש לבחור תפקיד אחד לפחות");
+      setIsSaving(false);
+      return;
+    }
+
+    if (formDepartmentIds.length === 0) {
+      setErrorMessage("יש לבחור מחלקה אחת לפחות");
+      setIsSaving(false);
+      return;
+    }
+
     try {
       if (editingUserId === null) {
         const input: CreateUserInput = {
@@ -144,6 +161,9 @@ export default function UsersPage() {
         };
         await createUser(input);
       } else {
+        // Password intentionally excluded — empty/optional on edit, and not
+        // part of "allow changing" for this sprint (full name, username,
+        // roles, departments only).
         const input: UpdateUserInput = {
           username: formUsername,
           full_name: formFullName,
@@ -156,20 +176,44 @@ export default function UsersPage() {
       setIsFormOpen(false);
       await loadData();
     } catch (err) {
-      setErrorMessage(err instanceof Error ? err.message : "שגיאה בשמירת המשתמש");
+      if (err instanceof ApiError) {
+        setErrorMessage(err.message);
+      } else {
+        setErrorMessage("שגיאה בשמירת המשתמש");
+      }
     } finally {
       setIsSaving(false);
     }
   }
 
-  async function handleToggleStatus(user: AppUser) {
-    setErrorMessage(null);
+  function openStatusChangeConfirm(user: AppUser) {
+    setStatusChangeUser(user);
+    setStatusChangeReason("");
+    setStatusChangeError(null);
+  }
+
+  async function confirmStatusChange() {
+    if (!statusChangeUser) return;
+
+    if (statusChangeReason.trim().length === 0) {
+      setStatusChangeError("יש לספק סיבה לפני שינוי הסטטוס");
+      return;
+    }
+
+    setIsChangingStatus(true);
+    setStatusChangeError(null);
+
+    const nextStatus = statusChangeUser.status === "active" ? "inactive" : "active";
+
     try {
-      const nextStatus = user.status === "active" ? "inactive" : "active";
-      await setUserStatus(user.user_id, nextStatus);
+      await setUserStatus(statusChangeUser.user_id, nextStatus, statusChangeReason.trim());
+      setStatusChangeUser(null);
+      setStatusChangeReason("");
       await loadData();
     } catch (err) {
-      setErrorMessage(err instanceof Error ? err.message : "שגיאה בעדכון סטטוס המשתמש");
+      setStatusChangeError(err instanceof Error ? err.message : "שגיאה בעדכון סטטוס המשתמש");
+    } finally {
+      setIsChangingStatus(false);
     }
   }
 
@@ -209,7 +253,7 @@ export default function UsersPage() {
           <div className="mt-6 rounded-2xl bg-red-50 p-6 text-red-700">
             <p className="font-semibold">אין הרשאה לצפות במסך זה</p>
             <p className="mt-1 text-sm">
-              מסך זה מוגבל לתפקיד &quot;מנהל מערכת&quot; בלבד (RBAC Matrix, חלק ד׳, פרק 2.15).
+              מסך זה מוגבל לתפקיד &quot;מנהל מערכת&quot; בלבד (ראו מטריצת ההרשאות, פרק 2.15).
             </p>
             <Link href="/dashboard" className="mt-3 inline-block text-sm font-medium underline">
               חזרה לדשבורד
@@ -217,13 +261,30 @@ export default function UsersPage() {
           </div>
         )}
 
-        {!accessDenied && errorMessage && (
+        {!accessDenied && errorMessage && !isFormOpen && (
           <p className="mt-4 rounded-xl bg-red-50 px-4 py-3 text-sm font-medium text-red-700">{errorMessage}</p>
         )}
 
         {!accessDenied && isFormOpen && (
           <form onSubmit={handleFormSubmit} className="mt-6 max-w-lg rounded-2xl bg-white p-6 shadow-lg">
-            <h2 className="text-lg font-bold text-slate-900">{editingUserId === null ? "משתמש חדש" : "עריכת משתמש"}</h2>
+            <h2 className="text-lg font-bold text-slate-900">
+              {editingUserId === null ? "משתמש חדש" : "עריכת משתמש"}
+            </h2>
+
+            {errorMessage && (
+              <p className="mt-3 rounded-xl bg-red-50 px-4 py-3 text-sm font-medium text-red-700">{errorMessage}</p>
+            )}
+
+            <div className="mt-4">
+              <label className="block text-sm font-medium text-slate-700">שם מלא</label>
+              <input
+                required
+                className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2.5"
+                value={formFullName}
+                onChange={(e) => setFormFullName(e.target.value)}
+                disabled={isSaving}
+              />
+            </div>
 
             <div className="mt-4">
               <label className="block text-sm font-medium text-slate-700">שם משתמש</label>
@@ -251,18 +312,7 @@ export default function UsersPage() {
             )}
 
             <div className="mt-4">
-              <label className="block text-sm font-medium text-slate-700">שם מלא</label>
-              <input
-                required
-                className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2.5"
-                value={formFullName}
-                onChange={(e) => setFormFullName(e.target.value)}
-                disabled={isSaving}
-              />
-            </div>
-
-            <div className="mt-4">
-              <label className="block text-sm font-medium text-slate-700">אתר (Site)</label>
+              <label className="block text-sm font-medium text-slate-700">אתר</label>
               <input
                 required
                 type="number"
@@ -275,7 +325,7 @@ export default function UsersPage() {
             </div>
 
             <div className="mt-4">
-              <span className="block text-sm font-medium text-slate-700">תפקידים (Roles)</span>
+              <span className="block text-sm font-medium text-slate-700">תפקידים</span>
               <div className="mt-2 grid grid-cols-2 gap-2">
                 {roles.map((role) => (
                   <label key={role.role_id} className="flex items-center gap-2 text-sm text-slate-700">
@@ -293,7 +343,7 @@ export default function UsersPage() {
             </div>
 
             <div className="mt-4">
-              <span className="block text-sm font-medium text-slate-700">מחלקות (Departments)</span>
+              <span className="block text-sm font-medium text-slate-700">מחלקות</span>
               <div className="mt-2 grid grid-cols-2 gap-2">
                 {departments.map((department) => (
                   <label key={department.department_id} className="flex items-center gap-2 text-sm text-slate-700">
@@ -307,13 +357,15 @@ export default function UsersPage() {
                   </label>
                 ))}
               </div>
-              <p className="mt-1 text-xs text-slate-500">שיוך מחלקה אינו חובה.</p>
+              {formDepartmentIds.length === 0 && (
+                <p className="mt-1 text-xs text-red-600">יש לבחור מחלקה אחת לפחות</p>
+              )}
             </div>
 
             <div className="mt-6 flex gap-3">
               <button
                 type="submit"
-                disabled={isSaving || formRoleIds.length === 0}
+                disabled={isSaving || formRoleIds.length === 0 || formDepartmentIds.length === 0}
                 className="rounded-xl bg-slate-900 px-5 py-2.5 text-white font-semibold disabled:opacity-50"
               >
                 {isSaving ? "שומר..." : "שמירה"}
@@ -328,6 +380,62 @@ export default function UsersPage() {
               </button>
             </div>
           </form>
+        )}
+
+        {!accessDenied && statusChangeUser && (
+          <div className="mt-6 max-w-lg rounded-2xl border-2 border-amber-300 bg-amber-50 p-6">
+            <h2 className="text-lg font-bold text-slate-900">
+              {statusChangeUser.status === "active"
+                ? `להשבית את המשתמש "${statusChangeUser.full_name}"?`
+                : `להפעיל מחדש את המשתמש "${statusChangeUser.full_name}"?`}
+            </h2>
+            <p className="mt-1 text-sm text-slate-600">
+              המשתמש לא יימחק פיזית — הפעולה ניתנת לביטול על ידי {statusChangeUser.status === "active" ? "הפעלה מחדש" : "השבתה"} בעתיד.
+            </p>
+
+            {statusChangeError && (
+              <p className="mt-3 rounded-xl bg-red-50 px-4 py-3 text-sm font-medium text-red-700">{statusChangeError}</p>
+            )}
+
+            <div className="mt-4">
+              <label className="block text-sm font-medium text-slate-700">הערת פעולה (חובה)</label>
+              <textarea
+                required
+                rows={4}
+                className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2.5"
+                value={statusChangeReason}
+                onChange={(e) => setStatusChangeReason(e.target.value)}
+                disabled={isChangingStatus}
+              />
+            </div>
+
+            <div className="mt-4 flex gap-3">
+              <button
+                type="button"
+                onClick={confirmStatusChange}
+                disabled={isChangingStatus || statusChangeReason.trim().length === 0}
+                className={
+                  statusChangeUser.status === "active"
+                    ? "rounded-xl bg-red-600 px-5 py-2.5 text-white font-semibold disabled:opacity-50"
+                    : "rounded-xl bg-green-600 px-5 py-2.5 text-white font-semibold disabled:opacity-50"
+                }
+              >
+                {isChangingStatus
+                  ? "מעדכן..."
+                  : statusChangeUser.status === "active"
+                  ? "אישור השבתה"
+                  : "אישור הפעלה"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setStatusChangeUser(null)}
+                disabled={isChangingStatus}
+                className="rounded-xl border border-slate-300 px-5 py-2.5 text-slate-700 font-semibold"
+              >
+                ביטול
+              </button>
+            </div>
+          </div>
         )}
 
         {!accessDenied && (
@@ -372,8 +480,11 @@ export default function UsersPage() {
                           <button onClick={() => openEditForm(user)} className="font-medium text-slate-900 underline">
                             עריכה
                           </button>
-                          <button onClick={() => handleToggleStatus(user)} className="font-medium text-red-600 underline">
-                            {user.status === "active" ? "השבתה" : "הפעלה"}
+                          <button
+                            onClick={() => openStatusChangeConfirm(user)}
+                            className="font-medium text-red-600 underline"
+                          >
+                            {user.status === "active" ? "השבת משתמש" : "הפעל משתמש"}
                           </button>
                         </div>
                       </td>

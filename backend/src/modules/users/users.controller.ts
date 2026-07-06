@@ -57,13 +57,24 @@ export async function updateUser(
 }
 
 export async function deactivateUser(
-  req: Request<{ id: string }>,
+  req: Request<{ id: string }, unknown, { reason?: string }>,
   res: Response,
   next: NextFunction
 ): Promise<void> {
   try {
     const id = Number(req.params.id);
-    const user = await usersService.deactivate(id);
+    const { reason } = req.body;
+
+    if (!reason || reason.trim().length === 0) {
+      res.status(400).json({
+        error_code: "VALIDATION_ERROR",
+        message: "יש לספק סיבה להשבתת המשתמש",
+        field_errors: [{ field: "reason", issue: "required" }],
+      });
+      return;
+    }
+
+    const user = await usersService.deactivate(id, reason);
     res.status(200).json({ data: user });
   } catch (err) {
     next(err);
@@ -71,13 +82,24 @@ export async function deactivateUser(
 }
 
 export async function activateUser(
-  req: Request<{ id: string }>,
+  req: Request<{ id: string }, unknown, { reason?: string }>,
   res: Response,
   next: NextFunction
 ): Promise<void> {
   try {
     const id = Number(req.params.id);
-    const user = await usersService.activate(id);
+    const { reason } = req.body;
+
+    if (!reason || reason.trim().length === 0) {
+      res.status(400).json({
+        error_code: "VALIDATION_ERROR",
+        message: "יש לספק סיבה להפעלת המשתמש",
+        field_errors: [{ field: "reason", issue: "required" }],
+      });
+      return;
+    }
+
+    const user = await usersService.activate(id, reason);
     res.status(200).json({ data: user });
   } catch (err) {
     next(err);

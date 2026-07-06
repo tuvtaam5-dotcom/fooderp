@@ -30,13 +30,14 @@ enum SiteStatus {
 }
 
 model User {
-  id           Int      @id @default(autoincrement())
-  username     String   @unique
-  passwordHash String   @map("password_hash")
-  fullName     String   @map("full_name")
-  status       UserStatus @default(active)
-  siteId       Int?     @map("site_id")
-  site         Site?    @relation(fields: [siteId], references: [id])
+  id                  Int      @id @default(autoincrement())
+  username            String   @unique
+  passwordHash        String   @map("password_hash")
+  fullName            String   @map("full_name")
+  status              UserStatus @default(active)
+  statusChangeReason  String?  @map("status_change_reason")
+  siteId              Int?     @map("site_id")
+  site                Site?    @relation(fields: [siteId], references: [id])
 
   roles        UserRole[]
   departments  UserDepartment[]
